@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>广西洪灾 — 登记求助 / 线索</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#12181A; --bg-raised:#1B2326; --bg-raised-2:#232D30; --line:#354245;
+    --text:#ECEFEC; --text-dim:#9DACAE;
+    --urgent:#E15C4F; --urgent-dim:#4A2C28;
+    --amber:#E0A82E; --amber-dim:#4A3E1F;
+    --good:#4FA37A; --good-dim:#22392E;
+    --water:#4C93B0; --water-dim:#1E313A;
+    --purple:#C79FE8; --purple-dim:#3A2A4A;
+    --radius:10px;
+    --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.6;padding-bottom:60px;}
+  a{color:var(--water);}
+  input,select,textarea{
+    width:100%; background:var(--bg-raised-2); border:1px solid var(--line); color:var(--text);
+    padding:10px 12px; border-radius:8px; font-size:14px; font-family:inherit;
+  }
+  input:focus,select:focus,textarea:focus{ outline:2px solid var(--water); }
+  label.field{ display:block; margin-bottom:14px; }
+  label.field .lbl{ font-size:13.5px; font-weight:700; margin-bottom:6px; display:flex; align-items:center; gap:6px;}
+  label.field .lbl .req{ color:var(--urgent); }
+  label.field .hint{ font-size:12px; color:var(--text-dim); margin-top:4px; }
+  .radio-row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .radio-row label{
+    flex:1; min-width:80px; text-align:center; background:var(--bg-raised-2); border:1px solid var(--line);
+    border-radius:8px; padding:9px 8px; font-size:13.5px; cursor:pointer;
+  }
+  .radio-row input{ display:none; }
+  .radio-row label:has(input:checked){ border-color:var(--water); background:var(--water-dim); color:var(--water); font-weight:800;}
+
+  .topbar{position:sticky;top:0;z-index:30;background:rgba(18,24,26,.97);backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--line);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+  .brand{font-weight:800;font-size:15px;}
+  .brand small{display:block;font-weight:400;color:var(--text-dim);font-size:12px;margin-top:2px;}
+  .tabs{display:flex;gap:6px;align-items:center;}
+  .tab-btn{font-size:13px;font-weight:700;color:var(--text-dim);background:none;border:1px solid var(--line);
+    padding:8px 14px;border-radius:999px;cursor:pointer;}
+  .tab-btn.active{color:var(--bg);background:var(--water);border-color:var(--water);}
+  .admin-badge{font-size:12px;font-weight:700;color:var(--good);background:var(--good-dim);padding:6px 12px;border-radius:999px;cursor:pointer;border:1px solid var(--good);}
+  .admin-badge.off{color:var(--text-dim);background:var(--bg-raised-2);border-color:var(--line);}
+
+  .warn-strip{background:var(--urgent-dim);color:#F3B7AE;font-size:12.5px;padding:9px 18px;
+    border-bottom:1px solid var(--line);text-align:center;}
+  .warn-strip b{color:var(--urgent);}
+  .config-warn{background:var(--amber-dim);color:var(--amber);font-size:12.5px;padding:9px 18px;text-align:center;display:none;}
+
+  main{max-width:720px;margin:0 auto;padding:22px 18px 0;}
+  .view{display:none;} .view.active{display:block;}
+
+  .panel{background:var(--bg-raised);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px;}
+  .panel h2{font-size:17px;margin-bottom:4px;}
+  .panel .sub{font-size:13px;color:var(--text-dim);margin-bottom:18px;}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:14px;font-weight:700;
+    padding:11px 18px;border-radius:8px;border:1px solid var(--line);background:var(--bg-raised-2);color:var(--text);cursor:pointer;}
+  .btn.primary{background:var(--water);border-color:var(--water);color:#0e2027;width:100%;}
+  .btn.danger{background:var(--urgent-dim);border-color:var(--urgent);color:var(--urgent);}
+  .btn.small{padding:6px 12px;font-size:12.5px;}
+  .btn:disabled{opacity:0.5;cursor:not-allowed;}
+
+  .msg{font-size:13px;padding:10px 12px;border-radius:8px;margin-top:10px;display:none;}
+  .msg.error{display:block;background:var(--urgent-dim);color:#F3B7AE;}
+  .msg.ok{display:block;background:var(--good-dim);color:var(--good);}
+
+  .filterbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+  .chip{font-size:12px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--bg-raised);color:var(--text-dim);cursor:pointer;}
+  .chip.active{background:var(--water-dim);border-color:var(--water);color:var(--water);font-weight:700;}
+
+  .req-card{background:var(--bg-raised);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;}
+  .req-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+  .req-name{font-weight:800;font-size:15px;}
+  .req-sub{font-size:12.5px;color:var(--text-dim);margin-top:2px;}
+  .status-pill{font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;white-space:nowrap;}
+  .status-待核实{background:var(--amber-dim);color:var(--amber);}
+  .status-已有线索{background:var(--water-dim);color:var(--water);}
+  .status-已转移安置{background:var(--good-dim);color:var(--good);}
+  .status-已联系上{background:var(--good-dim);color:var(--good);}
+  .status-需要紧急救援{background:var(--urgent-dim);color:var(--urgent);}
+  .status-已关闭{background:var(--bg-raised-2);color:var(--text-dim);}
+
+  .req-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;margin-top:12px;font-size:13px;}
+  .req-grid .k{color:var(--text-dim);}
+  .req-flags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+  .flag{font-size:11px;padding:3px 9px;border-radius:999px;background:var(--purple-dim);color:var(--purple);font-weight:700;}
+
+  .req-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center;}
+
+  .clue-list{margin-top:14px;border-top:1px dashed var(--line);padding-top:12px;}
+  .clue-item{background:var(--bg-raised-2);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:13px;}
+  .clue-item .clue-meta{color:var(--text-dim);font-size:11.5px;margin-top:4px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:none;align-items:center;justify-content:center;padding:16px;}
+  .modal-bg.open{display:flex;}
+  .modal{background:var(--bg-raised);border:1px solid var(--line);border-radius:var(--radius);padding:20px;max-width:420px;width:100%;max-height:88vh;overflow-y:auto;}
+  .modal h3{font-size:16px;margin-bottom:14px;}
+
+  .hp{position:absolute;left:-9999px;opacity:0;}
+
+  footer{max-width:720px;margin:30px auto 0;padding:20px 18px;color:var(--text-dim);font-size:12px;border-top:1px solid var(--line);}
+  .empty{text-align:center;padding:40px 20px;color:var(--text-dim);font-size:14px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">广西洪灾互助信息<small>登记求助 / 提交线索 · Supabase 版</small></div>
+  <div class="tabs">
+    <button class="tab-btn active" data-view="register">登记求助</button>
+    <button class="tab-btn" data-view="browse">求助列表</button>
+    <span class="admin-badge off" id="admin-badge" onclick="onAdminBadgeClick()">未登录</span>
+  </div>
+</div>
+<div class="config-warn" id="config-warn">⚠ 还没有配置 Supabase 项目地址和密钥，见本文件顶部 SUPABASE_URL / SUPABASE_ANON_KEY，也可参考随附的 SETUP-GUIDE.md</div>
+<div class="warn-strip"><b>说明：</b>数据现在存储在你自己的 Supabase 项目里，任何人都能提交，只有登录的管理员账号能变更状态</div>
+
+<main>
+
+  <!-- 登记求助 -->
+  <div class="view active" id="view-register">
+    <div class="panel">
+      <h2>登记一条求助信息</h2>
+      <div class="sub">带 <span style="color:var(--urgent)">*</span> 为必填。信息将对所有查看列表的人公开，详细住址除外（默认不公开，服务器端强制隐藏）。</div>
+
+      <form id="reg-form">
+        <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off">
+
+        <label class="field"><div class="lbl">求助人联系方式 <span class="req">*</span></div>
+          <input type="tel" name="reporterContact" placeholder="能接通的手机号" required></label>
+
+        <label class="field"><div class="lbl">与被寻人的关系 <span class="req">*</span></div>
+          <select name="relation" required>
+            <option value="">请选择</option>
+            <option>子女</option><option>父母</option><option>配偶</option>
+            <option>兄弟姐妹</option><option>亲戚</option><option>朋友/邻居</option><option>其他</option>
+          </select></label>
+
+        <label class="field"><div class="lbl">被寻人姓名或称呼 <span class="req">*</span></div>
+          <input type="text" name="personName" placeholder="例如：甘某财，或“云表镇下甘村甘叔”" required></label>
+
+        <label class="field"><div class="lbl">年龄段 <span class="req">*</span></div>
+          <select name="ageRange" required>
+            <option value="">请选择</option>
+            <option>儿童（0-12岁）</option><option>青少年（13-17岁）</option>
+            <option>成年（18-59岁）</option><option>老年（60岁以上）</option><option>不确定</option>
+          </select></label>
+
+        <label class="field"><div class="lbl">最后联系时间 <span class="req">*</span></div>
+          <input type="datetime-local" name="lastContactTime" required></label>
+
+        <label class="field"><div class="lbl">最后已知位置 <span class="req">*</span></div>
+          <input type="text" name="lastKnownLocation" placeholder="例如：贵港市港北区XX镇XX村" required>
+          <div class="hint">用于展示给所有人，精确到乡镇/村即可，不必写门牌号</div></label>
+
+        <label class="field"><div class="lbl">详细住址（选填，默认不公开）</div>
+          <input type="text" name="detailedAddress" placeholder="门牌号等，仅用于协助救援核实">
+          <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13px;color:var(--text-dim);font-weight:400;">
+            <input type="checkbox" name="addressPublic" style="width:auto;"> 我同意将详细住址一并公开显示（不勾选则仅保存，默认不展示，数据库层面强制隐藏）
+          </label></label>
+
+        <div class="lbl" style="margin-bottom:8px;">是否行动不便 <span class="req">*</span></div>
+        <div class="radio-row" style="margin-bottom:14px;">
+          <label><input type="radio" name="mobilityImpaired" value="是" required><span>是</span></label>
+          <label><input type="radio" name="mobilityImpaired" value="否"><span>否</span></label>
+          <label><input type="radio" name="mobilityImpaired" value="不确定"><span>不确定</span></label>
+        </div>
+
+        <div class="lbl" style="margin-bottom:8px;">是否有基础病 <span class="req">*</span></div>
+        <div class="radio-row" style="margin-bottom:14px;">
+          <label><input type="radio" name="chronicIllness" value="是" required><span>是</span></label>
+          <label><input type="radio" name="chronicIllness" value="否"><span>否</span></label>
+          <label><input type="radio" name="chronicIllness" value="不确定"><span>不确定</span></label>
+        </div>
+
+        <div class="lbl" style="margin-bottom:8px;">是否需要紧急救援 <span class="req">*</span></div>
+        <div class="radio-row" style="margin-bottom:18px;">
+          <label><input type="radio" name="urgentRescue" value="是" required><span>是，情况紧急</span></label>
+          <label><input type="radio" name="urgentRescue" value="否"><span>暂不需要</span></label>
+        </div>
+
+        <button type="submit" class="btn primary">提交登记</button>
+        <div class="msg" id="reg-msg"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 求助列表 -->
+  <div class="view" id="view-browse">
+    <div class="filterbar" id="status-filters"></div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text-dim);margin-bottom:14px;">
+      <input type="checkbox" id="show-hidden" style="width:auto;"> 显示已被举报隐藏的条目（复核用）
+    </label>
+    <div id="req-list"></div>
+  </div>
+
+</main>
+
+<footer>
+  <p><b>这一版和上一版的区别：</b></p>
+  <p style="margin-top:6px;">
+  1) 数据存在你自己的 Supabase 项目里，不再依赖 Claude 平台，理论上可以永久保留、随时导出。<br>
+  2) 详细住址的隐藏现在是数据库权限强制的——访客拿到的接口权限根本读不到那个字段的真实值，不再只是网页界面上藏起来。<br>
+  3) 状态变更需要真正登录管理员账号（右上角"未登录"点一下可以登录），不再是任何人都能猜到的口令。<br>
+  4) 提交频率限制、诈骗关键词拦截仍然只是初步防护，没有手机验证，仍建议后续视情况加强。
+  </p>
+</footer>
+
+<!-- 线索提交弹窗 -->
+<div class="modal-bg" id="clue-modal-bg">
+  <div class="modal">
+    <h3>提交线索</h3>
+    <form id="clue-form">
+      <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off">
+      <input type="hidden" name="requestId">
+      <label class="field"><div class="lbl">你看到的时间 <span class="req">*</span></div>
+        <input type="datetime-local" name="seenTime" required></label>
+      <label class="field"><div class="lbl">看到的位置 <span class="req">*</span></div>
+        <input type="text" name="location" placeholder="具体地点或大致方位" required></label>
+      <label class="field"><div class="lbl">情况描述 <span class="req">*</span></div>
+        <textarea name="description" rows="3" placeholder="你看到/了解到的情况，越具体越好" required></textarea></label>
+      <label style="display:flex;gap:8px;align-items:center;margin-bottom:14px;font-size:13px;">
+        <input type="checkbox" name="hasMedia" style="width:auto;"> 我有相关照片或视频（可通过下方联系方式提供）
+      </label>
+      <label class="field"><div class="lbl">你的联系方式（选填，可匿名）</div>
+        <input type="tel" name="clueContact" placeholder="方便的话留一个，便于核实"></label>
+      <button type="submit" class="btn primary">提交线索</button>
+      <div class="msg" id="clue-msg"></div>
+    </form>
+  </div>
+</div>
+
+<!-- 管理员登录弹窗 -->
+<div class="modal-bg" id="admin-modal-bg">
+  <div class="modal">
+    <h3 id="admin-modal-title">管理员登录</h3>
+    <form id="admin-form">
+      <label class="field"><div class="lbl">邮箱</div><input type="email" name="email" required></label>
+      <label class="field"><div class="lbl">密码</div><input type="password" name="password" required></label>
+      <button type="submit" class="btn primary">登录</button>
+      <div class="msg" id="admin-msg"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// 在这里填入你自己 Supabase 项目的地址和 anon key
+// 位置：Supabase 项目 → Project Settings → API
+// anon key 是设计给前端公开使用的，不是密钥，可以放心写在这里
+// ============================================================
+const SUPABASE_URL = "https://xzfghclgndwmthnwpdzq.supabase.co/rest/v1/";
+const SUPABASE_ANON_KEY = "sb_publishable_27A3gEdWyUlEMqSu4nqagA_SZbh_tQ7";
+
+const isConfigured = !SUPABASE_URL.includes("YOUR-PROJECT-REF");
+if(!isConfigured) document.getElementById("config-warn").style.display = "block";
+
+const supabase = isConfigured
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+const STATUS_LIST = ["待核实","已有线索","已转移安置","已联系上","需要紧急救援","已关闭"];
+const BLOCKLIST = ["先转账","保证金","刷单","中奖","加我微信支付","刷流水","贷款","佣金","押金退款","扫码领取"];
+const SUBMIT_COOLDOWN_MS = 60 * 1000;
+
+let lastSubmitAt = 0;
+let activeStatusFilter = "全部";
+let adminSession = null;
+
+function containsBlocked(text){
+  const t = (text||"").toLowerCase();
+  return BLOCKLIST.some(w => t.includes(w.toLowerCase()));
+}
+function escapeHtml(s){
+  return String(s||"").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+}
+function fmtTime(s){
+  if(!s) return "未填写";
+  const d = new Date(s);
+  if(isNaN(d)) return s;
+  return d.toLocaleString("zh-CN", {month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+}
+
+// ---------- tabs ----------
+document.querySelectorAll(".tab-btn").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".tab-btn").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.getElementById("view-"+b.dataset.view).classList.add("active");
+  if(b.dataset.view === "browse") renderList();
+}));
+
+// ---------- admin auth ----------
+function onAdminBadgeClick(){
+  if(adminSession){
+    supabase.auth.signOut().then(() => { adminSession = null; updateAdminBadge(); renderList(); });
+  } else {
+    document.getElementById("admin-msg").className = "msg";
+    document.getElementById("admin-form").reset();
+    document.getElementById("admin-modal-bg").classList.add("open");
+  }
+}
+function updateAdminBadge(){
+  const badge = document.getElementById("admin-badge");
+  if(adminSession){ badge.textContent = "管理员：" + adminSession.email + "（点击退出）"; badge.classList.remove("off"); }
+  else { badge.textContent = "未登录（点击登录）"; badge.classList.add("off"); }
+}
+document.getElementById("admin-modal-bg").addEventListener("click", (e) => {
+  if(e.target.id === "admin-modal-bg") document.getElementById("admin-modal-bg").classList.remove("open");
+});
+document.getElementById("admin-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("admin-msg");
+  const fd = new FormData(e.target);
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: fd.get("email"), password: fd.get("password")
+  });
+  if(error){ msg.className = "msg error"; msg.textContent = "登录失败：" + error.message; return; }
+  adminSession = data.user;
+  updateAdminBadge();
+  document.getElementById("admin-modal-bg").classList.remove("open");
+  renderList();
+});
+
+// ---------- register form ----------
+document.getElementById("reg-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("reg-msg");
+  msg.className = "msg"; msg.textContent = "";
+  if(!isConfigured){ msg.className="msg error"; msg.textContent="请先配置 SUPABASE_URL / SUPABASE_ANON_KEY"; return; }
+  const fd = new FormData(e.target);
+
+  if(fd.get("website")){ return; } // 蜜罐字段，机器人才会填
+
+  if(Date.now() - lastSubmitAt < SUBMIT_COOLDOWN_MS){
+    msg.className = "msg error";
+    msg.textContent = "提交太频繁了，请" + Math.ceil((SUBMIT_COOLDOWN_MS-(Date.now()-lastSubmitAt))/1000) + "秒后再试（防止重复刷屏）。";
+    return;
+  }
+
+  const record = {
+    reporter_contact: fd.get("reporterContact").trim(),
+    relation: fd.get("relation"),
+    person_name: fd.get("personName").trim(),
+    age_range: fd.get("ageRange"),
+    last_contact_time: fd.get("lastContactTime") || null,
+    last_known_location: fd.get("lastKnownLocation").trim(),
+    detailed_address: (fd.get("detailedAddress")||"").trim(),
+    address_public: fd.get("addressPublic") === "on",
+    mobility_impaired: fd.get("mobilityImpaired"),
+    chronic_illness: fd.get("chronicIllness"),
+    urgent_rescue: fd.get("urgentRescue"),
+    status: fd.get("urgentRescue") === "是" ? "需要紧急救援" : "待核实"
+  };
+
+  const combined = [record.person_name, record.last_known_location, record.detailed_address].join(" ");
+  if(containsBlocked(combined)){
+    msg.className = "msg error";
+    msg.textContent = "内容中包含疑似诈骗/推广关键词，无法提交。如果这是误判，请修改措辞后重试。";
+    return;
+  }
+
+  const { error } = await supabase.from("requests").insert([record]);
+  if(error){ msg.className = "msg error"; msg.textContent = "提交失败：" + error.message; return; }
+
+  lastSubmitAt = Date.now();
+  msg.className = "msg ok";
+  msg.textContent = "登记成功。你可以切换到「求助列表」查看，并把链接分享给可能路过此地的人。";
+  e.target.reset();
+});
+
+// ---------- clue form ----------
+const clueModalBg = document.getElementById("clue-modal-bg");
+function openClueModal(requestId){
+  document.getElementById("clue-form").reset();
+  document.querySelector('#clue-form [name="requestId"]').value = requestId;
+  document.getElementById("clue-msg").className = "msg";
+  document.getElementById("clue-msg").textContent = "";
+  clueModalBg.classList.add("open");
+}
+clueModalBg.addEventListener("click", (e) => { if(e.target === clueModalBg) clueModalBg.classList.remove("open"); });
+
+document.getElementById("clue-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("clue-msg");
+  const fd = new FormData(e.target);
+  if(fd.get("website")){ return; }
+
+  if(Date.now() - lastSubmitAt < SUBMIT_COOLDOWN_MS){
+    msg.className = "msg error"; msg.textContent = "提交太频繁，请稍后再试。"; return;
+  }
+
+  const desc = fd.get("description");
+  if(containsBlocked(desc + " " + fd.get("location"))){
+    msg.className = "msg error"; msg.textContent = "内容中包含疑似诈骗/推广关键词，无法提交。"; return;
+  }
+
+  const requestId = fd.get("requestId");
+  const clue = {
+    request_id: requestId,
+    seen_time: fd.get("seenTime") || null,
+    location: fd.get("location").trim(),
+    description: desc.trim(),
+    has_media: fd.get("hasMedia") === "on",
+    contact: (fd.get("clueContact")||"").trim()
+  };
+
+  const { error } = await supabase.from("clues").insert([clue]);
+  if(error){ msg.className = "msg error"; msg.textContent = "提交失败：" + error.message; return; }
+
+  // 只允许"待核实 -> 已有线索"这一种自动转换，其余状态变更都要管理员登录
+  await supabase.rpc("mark_has_clue", { target_id: requestId });
+
+  lastSubmitAt = Date.now();
+  msg.className = "msg ok";
+  msg.textContent = "线索已提交，感谢帮助。";
+  setTimeout(() => { clueModalBg.classList.remove("open"); renderList(); }, 900);
+});
+
+// ---------- report ----------
+async function reportItem(kind, id){
+  if(kind === "request") await supabase.rpc("report_request", { target_id: id });
+  else await supabase.rpc("report_clue", { target_id: id });
+  renderList();
+}
+
+// ---------- admin status change ----------
+async function changeStatus(id, newStatus){
+  if(!newStatus) return;
+  if(!adminSession){ alert("请先在右上角登录管理员账号，才能变更状态。"); return; }
+  const { error } = await supabase.from("requests")
+    .update({ status: newStatus, auto_hidden: false })
+    .eq("id", id);
+  if(error){ alert("更新失败：" + error.message); return; }
+  renderList();
+}
+
+// ---------- list rendering ----------
+function renderFilters(){
+  const wrap = document.getElementById("status-filters");
+  const opts = ["全部", ...STATUS_LIST];
+  wrap.innerHTML = opts.map(s => `<span class="chip ${s===activeStatusFilter?'active':''}" data-s="${s}">${s}</span>`).join("");
+  wrap.querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => {
+    activeStatusFilter = c.dataset.s; renderFilters(); renderList();
+  }));
+}
+
+async function renderList(){
+  if(!isConfigured) return;
+  // 管理员登录后读完整表（能看到真实住址），访客读脱敏视图
+  const table = adminSession ? "requests" : "public_requests";
+  const { data: reqs, error: e1 } = await supabase.from(table).select("*").order("created_at", { ascending:false });
+  const { data: clues, error: e2 } = await supabase.from("clues").select("*").order("created_at", { ascending:false });
+  if(e1 || e2){
+    document.getElementById("req-list").innerHTML = `<div class="empty">加载失败：${(e1||e2).message}</div>`;
+    return;
+  }
+
+  const showHidden = document.getElementById("show-hidden").checked;
+  const filtered = (reqs||[]).filter(r => {
+    if(!showHidden && r.auto_hidden) return false;
+    if(activeStatusFilter !== "全部" && r.status !== activeStatusFilter) return false;
+    return true;
+  });
+
+  const list = document.getElementById("req-list");
+  if(filtered.length === 0){
+    list.innerHTML = `<div class="empty">暂无符合条件的求助信息${(reqs||[]).length===0 ? '，去「登记求助」页添加第一条吧' : ''}</div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(r => {
+    const relatedClues = (clues||[]).filter(c => c.request_id === r.id);
+    const flags = [];
+    if(r.mobility_impaired === "是") flags.push("行动不便");
+    if(r.chronic_illness === "是") flags.push("有基础病");
+    if(r.urgent_rescue === "是") flags.push("需紧急救援");
+    return `
+    <div class="req-card">
+      <div class="req-top">
+        <div>
+          <div class="req-name">${escapeHtml(r.person_name)}<span style="font-weight:400;color:var(--text-dim);font-size:12.5px;"> · ${r.relation}登记</span></div>
+          <div class="req-sub">${escapeHtml(r.last_known_location)}</div>
+        </div>
+        <span class="status-pill status-${r.status}">${r.status}${r.auto_hidden ? '（举报隐藏）':''}</span>
+      </div>
+
+      <div class="req-grid">
+        <div><span class="k">年龄段：</span>${r.age_range}</div>
+        <div><span class="k">最后联系：</span>${fmtTime(r.last_contact_time)}</div>
+        <div><span class="k">详细住址：</span>${r.address_public ? escapeHtml(r.detailed_address||'（未填写）') : '求助人设置为不公开'}</div>
+        <div><span class="k">求助人联系方式：</span>${escapeHtml(r.reporter_contact)}</div>
+      </div>
+      ${flags.length ? `<div class="req-flags">${flags.map(f=>`<span class="flag">${f}</span>`).join("")}</div>` : ""}
+
+      <div class="req-actions">
+        <button class="btn small" onclick="openClueModal('${r.id}')">提交线索</button>
+        <button class="btn small danger" onclick="reportItem('request','${r.id}')">举报此条</button>
+        <select class="btn small" style="width:auto;" onchange="changeStatus('${r.id}', this.value)">
+          <option value="">变更状态…${adminSession ? '' : '（需管理员登录）'}</option>
+          ${STATUS_LIST.map(s=>`<option value="${s}">${s}</option>`).join("")}
+        </select>
+      </div>
+
+      ${relatedClues.length ? `
+      <div class="clue-list">
+        <div style="font-size:12.5px;color:var(--text-dim);margin-bottom:6px;">线索（${relatedClues.length}）</div>
+        ${relatedClues.map(c => `
+          <div class="clue-item">
+            <div>${escapeHtml(c.description)}</div>
+            <div class="clue-meta">
+              <span>看到于 ${fmtTime(c.seen_time)} · ${escapeHtml(c.location)}${c.has_media ? ' · 有照片/视频':''}${c.contact ? ' · 联系：'+escapeHtml(c.contact) : ' · 匿名'}</span>
+              <a href="javascript:void(0)" onclick="reportItem('clue','${c.id}')" style="color:var(--urgent);">举报</a>
+            </div>
+          </div>
+        `).join("")}
+      </div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+document.getElementById("show-hidden").addEventListener("change", renderList);
+
+// ---------- init ----------
+(async function init(){
+  renderFilters();
+  if(isConfigured){
+    const { data } = await supabase.auth.getSession();
+    if(data.session){ adminSession = data.session.user; }
+    updateAdminBadge();
+    renderList();
+  }
+})();
+</script>
+</body>
+</html>
